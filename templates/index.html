@@ -1,0 +1,523 @@
+{% extends "base.html" %}
+
+{% block title %}NewsMonitor - 热点股票监控{% endblock %}
+
+{% block content %}
+<!-- 控制栏 -->
+<div class="d-flex align-items-center mb-3 gap-3">
+    <button id="btnRun" class="btn btn-primary" onclick="startPipeline()">
+        <i class="bi bi-play-fill"></i> 运行分析
+    </button>
+    <span id="statusBadge" class="badge bg-secondary">空闲</span>
+    <span id="elapsedTime" class="text-muted" style="font-size:0.85rem"></span>
+</div>
+
+<!-- 进度面板 -->
+<div id="progressPanel" style="display:none">
+    <div class="row">
+        <!-- Phase 1: 数据采集 -->
+        <div class="col-md-6">
+            <div class="phase-header"><i class="bi bi-cloud-download"></i> Phase 1: 数据采集</div>
+            <div id="fetcher_us_news" class="progress-card status-pending">
+                <i class="bi bi-globe2 card-icon"></i>
+                <span class="card-label">美股新闻</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="fetcher_cn_news" class="progress-card status-pending">
+                <i class="bi bi-newspaper card-icon"></i>
+                <span class="card-label">A股新闻</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="fetcher_cn_orders" class="progress-card status-pending">
+                <i class="bi bi-file-earmark-text card-icon"></i>
+                <span class="card-label">公司公告/订单</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="fetcher_sentiment" class="progress-card status-pending">
+                <i class="bi bi-emoji-smile card-icon"></i>
+                <span class="card-label">市场情绪</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+        </div>
+
+        <!-- Phase 2 + 3: 分析 + 评分 -->
+        <div class="col-md-6">
+            <div class="phase-header"><i class="bi bi-cpu"></i> Phase 2: 数据分析</div>
+            <div id="analyst_sentiment" class="progress-card status-pending">
+                <i class="bi bi-emoji-neutral card-icon"></i>
+                <span class="card-label">情绪分析师</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="analyst_us_news" class="progress-card status-pending">
+                <i class="bi bi-globe card-icon"></i>
+                <span class="card-label">美股分析师</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="analyst_cn_news" class="progress-card status-pending">
+                <i class="bi bi-building card-icon"></i>
+                <span class="card-label">A股分析师</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="analyst_orders" class="progress-card status-pending">
+                <i class="bi bi-receipt card-icon"></i>
+                <span class="card-label">订单分析师</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+
+            <div class="phase-header mt-2"><i class="bi bi-trophy"></i> Phase 3: 评分</div>
+            <div id="analyst_research_lead" class="progress-card status-pending">
+                <i class="bi bi-person-workspace card-icon"></i>
+                <span class="card-label">研究主管</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+            <div id="analyst_heat_scorer" class="progress-card status-pending">
+                <i class="bi bi-fire card-icon"></i>
+                <span class="card-label">评分引擎</span>
+                <span class="card-detail ms-2" data-detail></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 实时日志 -->
+    <div class="mt-3">
+        <div class="phase-header"><i class="bi bi-terminal"></i> 实时日志</div>
+        <div id="logPanel" class="log-panel"></div>
+    </div>
+</div>
+
+<!-- 结果面板 -->
+<div id="resultPanel" style="display:none">
+    <ul class="nav nav-tabs" id="resultTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabRanking">
+                <i class="bi bi-trophy-fill"></i> 热度排名
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabRawData">
+                <i class="bi bi-database"></i> 原始数据
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabScores">
+                <i class="bi bi-bar-chart-fill"></i> 评分明细
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabInsight">
+                <i class="bi bi-lightbulb"></i> LLM洞察
+            </button>
+        </li>
+    </ul>
+    <div class="tab-content" id="resultTabContent">
+        <div class="tab-pane fade show active p-3" id="tabRanking" role="tabpanel">
+            <div id="rankingContent"></div>
+        </div>
+        <div class="tab-pane fade p-3" id="tabRawData" role="tabpanel">
+            <div id="rawDataContent"></div>
+        </div>
+        <div class="tab-pane fade p-3" id="tabScores" role="tabpanel">
+            <div id="scoresContent"></div>
+        </div>
+        <div class="tab-pane fade p-3" id="tabInsight" role="tabpanel">
+            <div id="insightContent"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 错误面板 -->
+<div id="errorPanel" class="alert alert-danger mt-3" style="display:none">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span id="errorMessage"></span>
+</div>
+
+<!-- 页脚 -->
+<div id="footer" class="text-center text-muted mt-4 mb-3" style="font-size:0.8rem; display:none">
+    生成时间: <span id="generatedAt"></span>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// --- 状态 ---
+let eventSource = null;
+let timerInterval = null;
+let reportData = null;
+let rawData = null;
+
+const LABELS = {
+    us_news: '美股新闻', cn_news: 'A股新闻', cn_orders: '公司公告', sentiment: '市场情绪',
+    // analysts
+    sentiment: '情绪分析师', us_news: '美股分析师', cn_news: 'A股分析师',
+    orders: '订单分析师', research_lead: '研究主管', heat_scorer: '评分引擎',
+};
+
+// --- 控制按钮 ---
+function startPipeline() {
+    document.getElementById('btnRun').disabled = true;
+    document.getElementById('progressPanel').style.display = '';
+    document.getElementById('resultPanel').style.display = 'none';
+    document.getElementById('errorPanel').style.display = 'none';
+    document.getElementById('footer').style.display = 'none';
+    document.getElementById('logPanel').innerHTML = '';
+    document.getElementById('elapsedTime').textContent = '';
+
+    // 重置卡片
+    document.querySelectorAll('.progress-card').forEach(el => {
+        el.className = 'progress-card status-pending';
+        const d = el.querySelector('[data-detail]');
+        if (d) d.textContent = '';
+        // 移除旧 spinner
+        const oldSp = el.querySelector('.spinner-border');
+        if (oldSp) oldSp.remove();
+    });
+
+    // 启动 SSE
+    connectSSE();
+
+    // 启动计时
+    timerInterval = setInterval(updateElapsed, 1000);
+
+    // POST 启动
+    fetch('/api/run', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                showDone();
+                alert(d.error);
+            }
+        })
+        .catch(e => {
+            showDone();
+            alert('请求失败: ' + e);
+        });
+}
+
+function showDone() {
+    document.getElementById('btnRun').disabled = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function updateElapsed() {
+    fetch('/api/status').then(r => r.json()).then(d => {
+        if (d.elapsed != null) {
+            document.getElementById('elapsedTime').textContent = d.elapsed + 's';
+        }
+    });
+}
+
+// --- SSE ---
+function connectSSE() {
+    if (eventSource) { eventSource.close(); }
+    eventSource = new EventSource('/api/stream');
+
+    eventSource.onmessage = function(e) {
+        const msg = JSON.parse(e.data);
+        handleEvent(msg.event, msg.data);
+    };
+
+    eventSource.onerror = function() {
+        // 自动重连由浏览器处理
+    };
+}
+
+function handleEvent(event, data) {
+    switch (event) {
+        case 'pipeline_start':
+            setStatus('running', '运行中');
+            break;
+        case 'phase_start':
+            addLog('info', `[Phase ${data.phase}] ${data.message}`);
+            break;
+        case 'phase_done':
+            addLog('info', `[Phase ${data.phase}] ${data.message} ✓`);
+            break;
+        case 'fetcher_started':
+            setCardStatus('fetcher', data.name, 'running');
+            break;
+        case 'fetcher_done':
+            setCardStatus('fetcher', data.name, data.error ? 'fail' : 'done');
+            setCardDetail('fetcher', data.name, data.error ? '失败' : data.count + ' 条');
+            break;
+        case 'analyst_started':
+            setCardStatus('analyst', data.name, 'running');
+            break;
+        case 'analyst_done':
+            setCardStatus('analyst', data.name, data.error ? 'fail' : 'done');
+            break;
+        case 'log':
+            addLog(data.level || 'info', data.message);
+            break;
+        case 'pipeline_done':
+            setStatus('done', '完成');
+            showDone();
+            loadResults();
+            break;
+        case 'pipeline_error':
+            setStatus('error', '错误');
+            document.getElementById('errorPanel').style.display = '';
+            document.getElementById('errorMessage').textContent = data.message;
+            addLog('error', '流水线错误: ' + data.message);
+            showDone();
+            break;
+    }
+}
+
+// --- UI 辅助 ---
+function setStatus(type, text) {
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = text;
+    badge.className = 'badge bg-' + (type === 'running' ? 'primary' : type === 'done' ? 'success' : type === 'error' ? 'danger' : 'secondary');
+}
+
+function setCardStatus(prefix, name, status) {
+    const el = document.getElementById(prefix + '_' + name);
+    if (!el) return;
+    el.className = 'progress-card status-' + status;
+    // spinner
+    const oldSp = el.querySelector('.spinner-border');
+    if (oldSp) oldSp.remove();
+    if (status === 'running') {
+        const sp = document.createElement('span');
+        sp.className = 'spinner-border spinner-border-sm ms-2';
+        sp.setAttribute('role', 'status');
+        el.querySelector('.card-label').after(sp);
+    }
+}
+
+function setCardDetail(prefix, name, text) {
+    const el = document.getElementById(prefix + '_' + name);
+    if (!el) return;
+    const d = el.querySelector('[data-detail]');
+    if (d) d.textContent = text;
+}
+
+function addLog(level, message) {
+    const panel = document.getElementById('logPanel');
+    const time = new Date().toLocaleTimeString();
+    const cls = level === 'error' ? 'log-error' : level === 'warn' ? 'log-warn' : 'log-info';
+    panel.innerHTML += `<div><span class="log-time">${time}</span> <span class="${cls}">${escHtml(message)}</span></div>`;
+    panel.scrollTop = panel.scrollHeight;
+}
+
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// --- 加载结果 ---
+function loadResults() {
+    Promise.all([
+        fetch('/api/report').then(r => r.json()),
+        fetch('/api/raw-data').then(r => r.json()),
+    ]).then(([report, raw]) => {
+        reportData = report;
+        rawData = raw;
+        renderAll();
+        document.getElementById('progressPanel').style.display = 'none';
+        document.getElementById('resultPanel').style.display = '';
+        document.getElementById('footer').style.display = '';
+        document.getElementById('generatedAt').textContent = report.generated_at || new Date().toISOString();
+    }).catch(e => {
+        addLog('error', '加载结果失败: ' + e);
+    });
+}
+
+function renderAll() {
+    renderRanking();
+    renderRawData();
+    renderScores();
+    renderInsight();
+}
+
+// --- 热度排名 ---
+function renderRanking() {
+    const stocks = reportData.ranked_stocks || [];
+    if (!stocks.length) {
+        document.getElementById('rankingContent').innerHTML = '<p class="text-muted">无排名数据</p>';
+        return;
+    }
+
+    let html = `<table class="table table-hover result-table" style="font-size:0.88rem">
+        <thead><tr>
+            <th>#</th><th>代码</th><th>名称</th><th>市场</th>
+            <th>热度分</th><th>新闻频率</th><th>情绪</th><th>订单信号</th><th>LLM调整</th>
+        </tr></thead><tbody>`;
+
+    stocks.forEach((s, i) => {
+        const sc = s.heat_score;
+        const color = sc >= 70 ? 'danger' : sc >= 40 ? 'warning' : 'success';
+        html += `<tr class="toggle-detail" onclick="toggleDetail('rank_${i}')">
+            <td>${i + 1}</td>
+            <td><strong>${escHtml(s.ticker)}</strong></td>
+            <td>${escHtml(s.name)}</td>
+            <td><span class="badge bg-secondary">${escHtml(s.market)}</span></td>
+            <td><span class="badge bg-${color}">${sc.toFixed(1)}</span></td>
+            <td>${s.news_frequency_score.toFixed(1)}</td>
+            <td>${s.sentiment_score.toFixed(1)}</td>
+            <td>${s.order_signal_score.toFixed(1)}</td>
+            <td>${s.llm_adjustment >= 0 ? '+' : ''}${s.llm_adjustment.toFixed(1)}</td>
+        </tr>`;
+
+        // 详情行
+        html += `<tr class="stock-detail" id="rank_${i}"><td colspan="9" style="background:#f8f9fa; padding:12px 20px">
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>新闻 (${s.news_count})</strong>
+                    <ul class="small text-muted">${(s.news_items || []).map(n => '<li>' + escHtml(n) + '</li>').join('')}</ul>
+                </div>
+                <div class="col-md-6">
+                    ${s.order_signals.length ? '<strong>订单信号</strong><ul class="small">' + s.order_signals.map(o => '<li>' + escHtml(o) + '</li>').join('') + '</ul>' : ''}
+                    ${s.sentiment_summary ? '<strong>情绪</strong><p class="small">' + escHtml(s.sentiment_summary) + '</p>' : ''}
+                    ${s.heat_reasons.length ? '<strong>热度原因</strong><ul class="small">' + s.heat_reasons.map(r => '<li>' + escHtml(r) + '</li>').join('') + '</ul>' : ''}
+                    ${s.llm_insight ? '<strong>LLM洞察</strong><p class="small">' + escHtml(s.llm_insight) + '</p>' : ''}
+                </div>
+            </div>
+        </td></tr>`;
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('rankingContent').innerHTML = html;
+}
+
+function toggleDetail(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('show');
+}
+
+// --- 原始数据 ---
+function renderRawData() {
+    if (!rawData || rawData.error) {
+        document.getElementById('rawDataContent').innerHTML = '<p class="text-muted">暂无数据</p>';
+        return;
+    }
+
+    const sourceLabels = {
+        us_news: '美股新闻', cn_news: 'A股新闻', cn_orders: '公司公告/订单', sentiment: '市场情绪'
+    };
+
+    let html = '';
+    for (const [source, items] of Object.entries(rawData)) {
+        html += `<div class="mb-3">
+            <h6 class="phase-header">${sourceLabels[source] || source} (${items.length} 条)</h6>`;
+        if (!items.length) {
+            html += '<p class="text-muted small">无数据</p>';
+        } else {
+            html += '<div class="list-group">';
+            items.slice(0, 50).forEach(item => {
+                html += `<div class="list-group-item list-group-item-action p-2" style="font-size:0.85rem">
+                    <div class="d-flex justify-content-between">
+                        <strong>${escHtml(item.title || '')}</strong>
+                        <span class="badge bg-secondary">${escHtml(item.source || '')}</span>
+                    </div>
+                    ${item.related_tickers && item.related_tickers.length
+                        ? '<div class="mt-1">' + item.related_tickers.map(t => '<span class="badge bg-info me-1">' + escHtml(t) + '</span>').join('') + '</div>'
+                        : ''}
+                    ${item.content ? '<p class="small text-muted mb-0 mt-1">' + escHtml(item.content.substring(0, 200)) + '</p>' : ''}
+                </div>`;
+            });
+            if (items.length > 50) {
+                html += `<p class="text-muted small">... 仅显示前 50 条，共 ${items.length} 条</p>`;
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+    document.getElementById('rawDataContent').innerHTML = html;
+}
+
+// --- 评分明细 ---
+function renderScores() {
+    const stocks = reportData.ranked_stocks || [];
+    if (!stocks.length) {
+        document.getElementById('scoresContent').innerHTML = '<p class="text-muted">无数据</p>';
+        return;
+    }
+
+    let html = '<div class="row">';
+    stocks.forEach(s => {
+        const dims = [
+            {label: '新闻频率', value: s.news_frequency_score, color: '#0d6efd'},
+            {label: '情绪', value: s.sentiment_score, color: '#6f42c1'},
+            {label: '订单信号', value: s.order_signal_score, color: '#fd7e14'},
+            {label: 'LLM调整', value: Math.abs(s.llm_adjustment), color: s.llm_adjustment >= 0 ? '#198754' : '#dc3545'},
+        ];
+
+        html += `<div class="col-lg-4 col-md-6 mb-3">
+            <div class="card">
+                <div class="card-body p-2">
+                    <h6 class="mb-1">${escHtml(s.name || s.ticker)} <span class="badge bg-secondary">${escHtml(s.ticker)}</span>
+                        <span class="float-end badge ${s.heat_score >= 70 ? 'bg-danger' : s.heat_score >= 40 ? 'bg-warning' : 'bg-success'}">${s.heat_score.toFixed(1)}分</span>
+                    </h6>`;
+
+        dims.forEach(d => {
+            const w = Math.min(d.value, 100);
+            html += `<div class="d-flex align-items-center mb-1" style="font-size:0.8rem">
+                <span style="width:60px">${d.label}</span>
+                <div class="score-bar flex-grow-1">
+                    <div class="fill" style="width:${w}%; background:${d.color}"></div>
+                    <span class="label">${d.value.toFixed(1)}</span>
+                </div>
+            </div>`;
+        });
+
+        html += '</div></div></div>';
+    });
+    html += '</div>';
+    document.getElementById('scoresContent').innerHTML = html;
+}
+
+// --- LLM 洞察 ---
+function renderInsight() {
+    let html = '';
+
+    // 4 个摘要
+    const summaries = [
+        {title: '美股新闻摘要', text: reportData.us_news_summary},
+        {title: 'A股新闻摘要', text: reportData.cn_news_summary},
+        {title: '订单信号摘要', text: reportData.order_summary},
+        {title: '情绪概览', text: reportData.sentiment_summary},
+    ];
+
+    html += '<div class="row mb-3">';
+    summaries.forEach(s => {
+        html += `<div class="col-md-6 mb-2">
+            <div class="card"><div class="card-body p-2">
+                <h6 class="card-title" style="font-size:0.9rem">${s.title}</h6>
+                <p class="card-text small mb-0">${escHtml(s.text || '无数据')}</p>
+            </div></div>
+        </div>`;
+    });
+    html += '</div>';
+
+    // 跨市场分析
+    if (reportData.cross_market_insight) {
+        html += `<div class="card mb-3"><div class="card-body">
+            <h6 class="card-title"><i class="bi bi-globe2"></i> 跨市场关联分析</h6>
+            <p class="card-text" style="white-space:pre-wrap; font-size:0.9rem">${escHtml(reportData.cross_market_insight)}</p>
+        </div></div>`;
+    }
+
+    // 关键词
+    if (reportData.keywords && reportData.keywords.length) {
+        html += '<div class="mb-3"><h6>热门关键词</h6><div>';
+        reportData.keywords.forEach(k => {
+            html += `<span class="keyword-tag">${escHtml(k)}</span>`;
+        });
+        html += '</div></div>';
+    }
+
+    // 隐藏机会
+    if (reportData.hidden_opportunities && reportData.hidden_opportunities.length) {
+        html += '<div class="mb-3"><h6>被忽视的机会</h6>';
+        reportData.hidden_opportunities.forEach(o => {
+            html += `<div class="opportunity-item">${escHtml(o)}</div>`;
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('insightContent').innerHTML = html;
+}
+</script>
+{% endblock %}

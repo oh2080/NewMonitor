@@ -13,7 +13,6 @@ venv/
 # Runtime
 cache/
 logs/
-output/
 reports/
 
 # IDE

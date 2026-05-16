@@ -7,3 +7,4 @@ pyyaml>=6.0
 rich>=13.0
 python-dotenv>=1.0
 httpx>=0.27
+flask>=3.0
