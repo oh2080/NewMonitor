@@ -1,0 +1,79 @@
+llm:
+  provider: zhipu
+  model_deep: glm-5.1
+  model_quick: glm-5.1
+  api_key: ${ZHIPU_API_KEY}
+  max_retries: 3
+  timeout: 60
+
+stock_universe:
+  us_semi:
+    - symbol: NVDA
+      name: 英伟达
+    - symbol: AMD
+      name: 超威
+    - symbol: INTC
+      name: 英特尔
+    - symbol: AVGO
+      name: 博通
+    - symbol: MRVL
+      name: Marvell
+    - symbol: MU
+      name: 美光
+    - symbol: TSM
+      name: 台积电 ADR
+    - symbol: ASML
+      name: ASML
+    - symbol: QCOM
+      name: 高通
+    - symbol: ARM
+      name: ARM
+  cn_semi:
+    - symbol: "688256"
+      name: 寒武纪
+    - symbol: "603893"
+      name: 瑞芯微
+    - symbol: "688041"
+      name: 海光信息
+    - symbol: "688396"
+      name: 华峰测控
+    - symbol: "002049"
+      name: 紫光国微
+    - symbol: "688981"
+      name: 中芯国际
+    - symbol: "603501"
+      name: 韦尔股份
+    - symbol: "688012"
+      name: 中微公司
+    - symbol: "300661"
+      name: 圣邦股份
+    - symbol: "688521"
+      name: 芯原股份
+  cn_ai:
+    - symbol: "002230"
+      name: 科大讯飞
+    - symbol: "688787"
+      name: 海天瑞声
+    - symbol: "688208"
+      name: 道通科技
+    - symbol: "301396"
+      name: 星宸科技
+
+scoring:
+  weights:
+    news_frequency: 0.30
+    sentiment: 0.20
+    order_signal: 0.50
+
+data_sources:
+  us_news:
+    finnhub: true
+    yfinance: true
+  cn_news:
+    akshare: true
+    eastmoney: true
+  cn_orders:
+    cninfo: true
+  sentiment:
+    reddit: true
+    eastmoney_guba: true
